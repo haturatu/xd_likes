@@ -11,60 +11,58 @@ USERNAME = 'login_userid'
 EMAIL = 'login_user_mail'
 PASSWORD = 'login_user_pass'
 
-# リトライを試行の設定
+# リトライ設定
 RETRY_LIMIT = 5
-RETRY_DELAY = 900
+RETRY_DELAY = 300
 
-# ログファイルの設定
-log_file_path = 'fav.log'
-logger.add(log_file_path, format="{time} - {level} - {message}", rotation="10 MB")
-
-# クライアントの初期化
+# Twikitクライアントの初期化
 client = Client('en-US')
 
-# ユーザの認証情報でログイン
-client.login(auth_info_1=USERNAME, auth_info_2=EMAIL, password=PASSWORD)
+# サービスにユーザー資格情報でログイン
+# client.login(auth_info_1=USERNAME, auth_info_2=EMAIL, password=PASSWORD)
+# client.save_cookies('cookies.json')
 client.load_cookies('cookies.json')
 
-# 取得先のID
-user_screen_name = "get_likes_user_id"
+# ユーザーのスクリーンネームを指定
+user_screen_name = "ComingClean_17"
 
 # リトライ時に実行させる関数
 def perform_request_with_retries(request_func, *args, **kwargs):
-    retries = 0
-    while retries < RETRY_LIMIT:
+    for attempt in range(RETRY_LIMIT):
         try:
-            return request_func(*args, **kwargs)
+            response = request_func(*args, **kwargs)
+            if response:
+                return response
         except ReadTimeout:
-            retries += 1
-            logger.warning(f"ReadTimeout occurred. Retrying {retries}/{RETRY_LIMIT} in {RETRY_DELAY} seconds...")
-            time.sleep(RETRY_DELAY)
-    logger.error(f"Failed after {RETRIES} retries.")
-    return None
+            logger.warning(f"Attempt {attempt + 1} failed due to ReadTimeout.")
+        except Exception as e:
+            logger.error(f"Attempt {attempt + 1} failed: {e}")
+        time.sleep(RETRY_DELAY)
+    raise Exception("Failed to fetch more tweets after retries.")
 
-# ユーザIDの取得
+# ユーザーIDの取得
 user = perform_request_with_retries(client.get_user_by_screen_name, user_screen_name)
 if not user:
     raise Exception("Failed to fetch user information after retries.")
 user_id = user.id
 
-# ユーザのお気に入りツイートを取得
-liked_tweets = perform_request_with_retries(client.get_user_tweets, user_id=user_id, tweet_type='Likes', count=1)
+# ユーザーのいいねしたツイートを取得
+liked_tweets = perform_request_with_retries(client.get_user_tweets, user_id=user_id, tweet_type='Likes', count=40)
 if not liked_tweets:
     raise Exception("Failed to fetch liked tweets after retries.")
 
-total_tweets_fetched = []
+total_tweets_fetched = 0
 
-# お気に入りツイートから詳細情報を取得しログに書き出し
+# 初期バッチのツイートをループ処理
 for tweet in liked_tweets:
-    total_tweets_fetched += liked_tweets
+    total_tweets_fetched += 1
     target_tweet_id = tweet.id
     time.sleep(2)
 
     tweet_details = perform_request_with_retries(client.get_tweet_by_id, target_tweet_id)
     if tweet_details:
         author_username = tweet_details.user.screen_name
-        logger.info(f"<Tweet id=\"{tweet_details.id}\", X id: \"{author_username}\", Text: \"{tweet.text}\">")
+        logger.info(f"<Tweet id=\"{tweet_details.id}\", X id: \"{author_username}\", Text: \"{tweet_details.text}\">")
     else:
         logger.error("Failed to fetch tweet details after retries.")
 
@@ -72,27 +70,26 @@ for tweet in liked_tweets:
 
 # 上限値を決め、更に取得する必要がある場合試行する
 # この場合は5000件を取得する
-while len(liked_tweets) != 5000:
-    more_tweets = perform_request_with_retries(liked_tweets.next)
+while total_tweets_fetched < 5000:
+    more_tweets = perform_request_with_retries(client.get_user_tweets, user_id=user_id, tweet_type='Likes', count=40)
     if not more_tweets:
-        raise Exception("Failed to fetch more tweets after retries.")
-    time.sleep(2)
+        logger.error("Failed to fetch more tweets after retries.")
+        continue
 
     for tweet in more_tweets:
-        liked_tweets = perform_request_with_retries(liked_tweets.next)
-        total_tweets_fetched += liked_tweets
+        total_tweets_fetched += 1
         target_tweet_id = tweet.id
         time.sleep(2)
 
         tweet_details = perform_request_with_retries(client.get_tweet_by_id, target_tweet_id)
         if tweet_details:
             author_username = tweet_details.user.screen_name
-            logger.info(f"<Tweet id=\"{tweet_details.id}\", X id: \"{author_username}\", Text: \"{tweet.text}\">")
+            logger.info(f"<Tweet id=\"{tweet_details.id}\", X id: \"{author_username}\", Text: \"{tweet_details.text}\">")
         else:
             logger.error("Failed to fetch tweet details after retries.")
 
         time.sleep(12)
 
-        if len(liked_tweets) != 5000:
+        if total_tweets_fetched >= 5000:
             break
 
