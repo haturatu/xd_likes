@@ -27,7 +27,7 @@ client.login(auth_info_1=USERNAME, auth_info_2=EMAIL, password=PASSWORD)
 client.load_cookies('cookies.json')
 
 # 取得先のID
-user_screen_name = "ComingClean_17"
+user_screen_name = "get_likes_user_id"
 
 # リトライ時に実行させる関数
 def perform_request_with_retries(request_func, *args, **kwargs):
