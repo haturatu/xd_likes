@@ -41,8 +41,6 @@ async def perform_request_with_retries(request_func, *args, **kwargs):
         await asyncio.sleep(RETRY_DELAY)
     raise Exception("Failed to fetch more tweets after retries.")
 
-# 取得する最大値を設定する
-# この場合5000件を取得する
 async def fetch_all_liked_tweets(user_id, max_tweets=5000):
     all_tweets = []
     cursor = None
@@ -74,17 +72,6 @@ async def fetch_all_liked_tweets(user_id, max_tweets=5000):
             # 次のページがある場合は次のページを取得
             if hasattr(result, 'next'):
                 logger.info("Fetching next page of liked tweets.")
-
-                more_tweets = await perform_request_with_retries(liked_tweets.next)
-
-                # 取得したツイートをログに記録
-                logger.info(f"More tweets fetched: {len(more_tweets)}")
-                all_tweets.extend(more_tweets)
-
-                if len(all_tweets) >= max_tweets:
-                    logger.info(f"Reached the maximum limit of {max_tweets} tweets.")
-                    break
-
                 cursor = result.next_cursor if hasattr(result, 'next_cursor') else None
 
             else:
@@ -108,7 +95,7 @@ async def main():
         return
 
     # 取得先のID
-    user_screen_name = "get_likes_user_id"
+    user_screen_name = "ComingClean_17"
 
     # ユーザIDの取得
     try:
@@ -121,18 +108,16 @@ async def main():
         return
 
     # ユーザのお気に入りツイートを取得
-    all_tweets = await fetch_all_liked_tweets(user_id)
+    all_tweets = await fetch_all_liked_tweets(user_id, max_tweets=5000)  # 最大5000件取得する設定
 
-    total_tweets_fetched = 0
+    total_tweets_fetched = len(all_tweets)
 
     # ツイートの詳細情報を取得しログに書き出し
     for tweet in all_tweets:
-        total_tweets_fetched += 1
-        target_tweet_id = tweet.id
         await asyncio.sleep(2)
 
         try:
-            tweet_details = await perform_request_with_retries(client.get_tweet_by_id, target_tweet_id)
+            tweet_details = await perform_request_with_retries(client.get_tweet_by_id, tweet.id)
             if tweet_details:
                 author_username = tweet_details.user.screen_name
                 logger.info(f"<Tweet id=\"{tweet_details.id}\", X id: \"{author_username}\", Text: \"{tweet_details.text}\">")
