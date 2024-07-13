@@ -1,6 +1,4 @@
 # xd_likes
-Here's the translation of your provided text into English in Markdown format:
-
 There are two scripts: `likelog.py` for retrieving the likes section from X.com (Twitter), and `xd.py` for saving images from user IDs.
 
 ## likelog.py
