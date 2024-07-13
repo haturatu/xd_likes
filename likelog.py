@@ -95,7 +95,7 @@ async def main():
         return
 
     # 取得先のID
-    user_screen_name = "ComingClean_17"
+    user_screen_name = "get_likes_user_id"
 
     # ユーザIDの取得
     try:
