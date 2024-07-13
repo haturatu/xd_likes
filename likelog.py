@@ -36,7 +36,7 @@ user_screen_name = "get_username"
 async def perform_request_with_retries(request_func, *args, **kwargs):
     for attempt in range(RETRY_LIMIT):
         try:
-            response = await request_func(*args, **kwargs)
+            response = await request_func(*args, **kwargs)  # 非同期リクエストを待機
             if response:
                 return response
         except ReadTimeout:
@@ -46,10 +46,49 @@ async def perform_request_with_retries(request_func, *args, **kwargs):
         await asyncio.sleep(RETRY_DELAY)
     raise Exception("Failed to fetch more tweets after retries.")
 
+async def fetch_and_process_liked_tweets(user_id):
+    all_tweets = []
+    next_page = True
+
+    while next_page:
+        try:
+            # お気に入りツイートを取得
+            logger.info("Fetching page of liked tweets.")
+            liked_tweets = await perform_request_with_retries(client.get_user_tweets, user_id=user_id, tweet_type='Likes', count=40)
+            if not liked_tweets:
+                logger.warning("No liked tweets found or failed to fetch liked tweets.")
+                break
+
+            for tweet in liked_tweets:
+                target_tweet_id = tweet.id
+                await asyncio.sleep(2)
+
+                try:
+                    tweet_details = await perform_request_with_retries(client.get_tweet_by_id, target_tweet_id)
+                    if tweet_details:
+                        author_username = tweet_details.user.screen_name
+                        logger.info(f"<Tweet id=\"{tweet_details.id}\", X id: \"{author_username}\", Text: \"{tweet_details.text}\">")
+                    else:
+                        logger.error("Failed to fetch tweet details after retries.")
+                except Exception as e:
+                    logger.error(f"Failed to fetch tweet details: {e}")
+
+                await asyncio.sleep(12)
+
+            next_page = liked_tweets.next if hasattr(liked_tweets, 'next') else None
+
+            if next_page:
+                logger.info("Fetching next page of liked tweets.")
+                await asyncio.sleep(2)  # APIリクエストの間隔
+
+        except Exception as e:
+            logger.error(f"Failed to fetch more liked tweets: {e}")
+            break
+
 async def main():
     # クッキーを使ってログイン
     try:
-        client.load_cookies('cookies.json') 
+        client.load_cookies('cookies.json')  # 非同期ではない場合
     except Exception as e:
         logger.error(f"Failed to load cookies: {e}")
         return
@@ -64,53 +103,8 @@ async def main():
         logger.error(f"Failed to get user ID: {e}")
         return
 
-    # お気に入りツイートを取得
-    try:
-        liked_tweets = await perform_request_with_retries(client.get_user_tweets, user_id=user_id, tweet_type='Likes', count=40)
-        if not liked_tweets:
-            raise Exception("Failed to fetch liked tweets after retries.")
-    except Exception as e:
-        logger.error(f"Failed to get liked tweets: {e}")
-        return
+    # ユーザのお気に入りツイートを取得し処理
+    await fetch_and_process_liked_tweets(user_id)
 
-    total_tweets_fetched = 0
-    all_tweets = []
-
-    # ループ処理
-    while liked_tweets:
-        for tweet in liked_tweets:
-            all_tweets.append(tweet)
-            total_tweets_fetched += 1
-            target_tweet_id = tweet.id
-            await asyncio.sleep(2)
-
-            try:
-                tweet_details = await perform_request_with_retries(client.get_tweet_by_id, target_tweet_id)
-                if tweet_details:
-                    author_username = tweet_details.user.screen_name
-                    logger.info(f"<Tweet id=\"{tweet_details.id}\", X id: \"{author_username}\", Text: \"{tweet_details.text}\">")
-                else:
-                    logger.error("Failed to fetch tweet details after retries.")
-            except Exception as e:
-                logger.error(f"Failed to fetch tweet details: {e}")
-
-            await asyncio.sleep(12)
-
-        # さらにツイートを取得する
-        if len(all_tweets) < 5000 and liked_tweets.next:
-            try:
-                liked_tweets = await perform_request_with_retries(client.get_user_tweets, user_id=user_id, tweet_type='Likes', count=40)
-                if not liked_tweets:
-                    raise Exception("Failed to fetch more tweets after retries.")
-                await asyncio.sleep(2)
-            except Exception as e:
-                logger.error(f"Failed to fetch more tweets: {e}")
-                break
-        else:
-            break
-
-    logger.info(f"Total tweets fetched: {total_tweets_fetched}")
-
-# メイン関数をasyncioで非同期で実行
+# メイン関数を非同期で実行
 asyncio.run(main())
-
