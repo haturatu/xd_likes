@@ -125,6 +125,7 @@ async def main():
                 logger.error("Failed to fetch tweet details after retries.")
         except Exception as e:
             logger.error(f"Failed to fetch tweet details: {e}")
+            continue
 
         await asyncio.sleep(12)
 
