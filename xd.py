@@ -5,9 +5,13 @@ import asyncio
 from urllib.parse import urlparse
 from twikit import Client
 
+# ログイン設定をここで行う
+USERNAME = 'login_userid'
+EMAIL = 'login_user_mail'
+PASSWORD = 'login_user_pass'
+
 # Twikit クライアントの初期化
 client = Client('en-US')
-client.load_cookies('cookies.json')
 
 # ファイルからユーザー名を読み込む
 def load_usernames(filename):
@@ -22,7 +26,7 @@ SAVE_BASE_FOLDER = "/your/dir"
 
 # リトライ設定
 RETRY_LIMIT = 5
-RETRY_DELAY = 900
+RETRY_DELAY = 900  # 秒
 
 def create_save_folder(screen_name):
     path = os.path.join(SAVE_BASE_FOLDER, "media", screen_name)
@@ -35,6 +39,10 @@ def get_clean_url(url):
     return base_url
 
 async def download_image(url, save_path):
+    if os.path.exists(save_path):
+        print(f"Image already exists: {save_path}")
+        return  # 既に画像が存在する場合はスキップ
+
     for attempt in range(RETRY_LIMIT):
         try:
             async with httpx.AsyncClient() as async_client:
@@ -43,13 +51,22 @@ async def download_image(url, save_path):
                 with open(save_path, 'wb') as file:
                     file.write(response.content)
                 print(f"Image saved: {save_path}")
-                return 
+                return  # 成功した場合、関数を終了
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                print(f"Image not found (404): {url}")
+                return  # 404エラーは無視して終了
+            print(f"Attempt {attempt + 1} failed to download {url}: {e}")
+            break  # 404以外のHTTPステータスエラーの場合、ループを抜ける
         except httpx.RequestError as e:
             print(f"Attempt {attempt + 1} failed to download {url}: {e}")
-            if attempt < RETRY_LIMIT - 1:
-                await asyncio.sleep(RETRY_DELAY)
-            else:
-                print(f"Failed to download {url} after {RETRY_LIMIT} attempts")
+            break  # リクエストエラーの場合もループを抜ける
+
+        if attempt < RETRY_LIMIT - 1:
+            print(f"Retrying download for {url} after {RETRY_DELAY} seconds...")
+            await asyncio.sleep(RETRY_DELAY)
+        else:
+            print(f"Failed to download {url} after {RETRY_LIMIT} attempts")
 
 async def fetch_user_tweets(user, tweet_type):
     for attempt in range(RETRY_LIMIT):
@@ -61,7 +78,7 @@ async def fetch_user_tweets(user, tweet_type):
                 await asyncio.sleep(RETRY_DELAY)
             else:
                 print(f"Failed to fetch tweets after {RETRY_LIMIT} attempts")
-                return None 
+                return None  # 最後のリトライでも失敗した場合は None を返す
 
 async def process_user(screen_name):
     user = None
@@ -69,19 +86,21 @@ async def process_user(screen_name):
         user = await client.get_user_by_screen_name(screen_name)
     except Exception as e:
         print(f"Error retrieving user {screen_name}: {e}")
-        return 
+        return  # ユーザー情報の取得に失敗した場合は次のユーザーに進む
     
     save_folder = create_save_folder(screen_name)
     user_tweets = await fetch_user_tweets(user, 'Media')
 
     if user_tweets is None:
         print(f"Failed to fetch tweets for user {screen_name}. Skipping user.")
-        return  
+        return  # ツイート取得に失敗した場合は次のユーザーに進む
+
+    module_items_error_count = 0
 
     while user_tweets:
         for tweet in user_tweets:
             if tweet.media is None:
-                continue 
+                continue  # メディアがないツイートがある場合、次のツイートへ進む
 
             for media in tweet.media:
                 url = media.get('media_url_https')
@@ -96,17 +115,35 @@ async def process_user(screen_name):
             user_tweets = await user_tweets.next()
         except Exception as e:
             print(f"Error fetching next set of tweets for user {screen_name}: {e}")
-            continue
+            if "moduleItems" in str(e):
+                module_items_error_count += 1
+                if module_items_error_count >= 3:
+                    print(f"Error fetching next set of tweets for user {screen_name}: 'moduleItems' error occurred 3 times. Skipping user.")
+                    return
+                continue
+            break
 
 async def process_batch(batch):
     await asyncio.gather(*(process_user(name) for name in batch))
 
 async def main():
-    batch_size = 10
+    # クッキーを使ってログイン
+    try:
+        # ユーザの認証情報でログイン、初回時のみ
+        # await client.login(auth_info_1=USERNAME, auth_info_2=EMAIL, password=PASSWORD)
+        # client.save_cookies('cookies2.json')
+        # クッキーでロード
+        client.load_cookies('cookies.json')
+    except Exception as e:
+        print(f"Failed to load cookies: {e}")
+        return
+
+    batch_size = 2
     for i in range(0, len(USER_SCREEN_NAMES), batch_size):
         batch = USER_SCREEN_NAMES[i:i + batch_size]
         await process_batch(batch)
 
 if __name__ == "__main__":
     asyncio.run(main())
+
 
