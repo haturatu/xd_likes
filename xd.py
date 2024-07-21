@@ -131,7 +131,7 @@ async def main():
     try:
         # ユーザの認証情報でログイン、初回時のみ
         # await client.login(auth_info_1=USERNAME, auth_info_2=EMAIL, password=PASSWORD)
-        # client.save_cookies('cookies2.json')
+        # client.save_cookies('cookies.json')
         # クッキーでロード
         client.load_cookies('cookies.json')
     except Exception as e:
