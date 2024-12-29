@@ -16,13 +16,15 @@ PASSWORD = 'login_user_pass'
 RETRY_LIMIT = 5
 RETRY_DELAY = 900
 
-# ログファイルの設定
-log_file_path = 'fav.log'
-logger.add(log_file_path, format="{time} - {level} - {message}", rotation="10 MB")
+# クッキーのファイル名
+COOKIE_FILE = 'cookies.json'
 
-# ユーザの認証情報でログイン、初回時のみ
-# client.login(auth_info_1=USERNAME, auth_info_2=EMAIL, password=PASSWORD)
-# client.save_cookies('cookies.json')
+# 取得先のID
+USER_SCREEN_NAME = "get_likes_user_id"
+
+# ログファイルの設定
+LOG_FILE_PATH = 'fav.log'
+logger.add(LOG_FILE_PATH, format="{time} - {level} - {message}", rotation="10 MB")
 
 # クライアントの初期化
 client = Client('en-US')
@@ -87,19 +89,34 @@ async def fetch_all_liked_tweets(user_id, max_tweets=5000):
     return all_tweets[:max_tweets]
 
 async def main():
-    # クッキーを使ってログイン
-    try:
-        client.load_cookies('cookies.json') 
-    except Exception as e:
-        logger.error(f"Failed to load cookies: {e}")
-        return
+    # クッキーを使ってログインを試行
+    logged_in = False
+    if os.path.exists(COOKIE_FILE):
+        try:
+            client.load_cookies(COOKIE_FILE)
+            logger.info("Cookies loaded. Attempting login with cookies.")
+            # クッキーでログインできるか確認
+            user_info = await perform_request_with_retries(client.get_self)
+            if user_info:
+                logger.info("Successfully logged in using cookies.")
+                logged_in = True
+        except Exception as e:
+            logger.error(f"Login with cookies failed: {e}")
 
-    # 取得先のID
-    user_screen_name = "get_likes_user_id"
+    # クッキーでログインできなかった場合、新たにログイン
+    if not logged_in:
+        try:
+            logger.info("Attempting login with username and password.")
+            await client.login(auth_info_1=USERNAME, auth_info_2=EMAIL, password=PASSWORD)
+            client.save_cookies(COOKIE_FILE)
+            logger.info("Login successful and cookies saved.")
+        except Exception as e:
+            logger.error(f"Login failed: {e}")
+            return
 
     # ユーザIDの取得
     try:
-        user = await perform_request_with_retries(client.get_user_by_screen_name, user_screen_name)
+        user = await perform_request_with_retries(client.get_user_by_screen_name, USER_SCREEN_NAME)
         if not user:
             raise Exception("Failed to fetch user information after retries.")
         user_id = user.id
