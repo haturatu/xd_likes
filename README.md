@@ -12,7 +12,7 @@ It is recommended to run it in the background.
 
 I prefer to keep the log files as they are and do not perform any formatting at this stage. When using the log file in `xd.py` later, please output it like this:
 ```
-cat .*.log | grep -oP "X id: .*," | grep -oP "\".*\"" | sed -z  "s/\n/ ,/g"
+cat fav.log | grep -oP "X id: .*,"| sort | uniq | grep -oP "\".*\",$" | sed -e "s/\"//g" -e "s/,//g" > xids
 ```
 
 ## xd.py
